@@ -1,0 +1,14 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+# Environnement vituel
+venv/
+# Dossiers temporaires Python
+__pycache__/
+*.pyc
+
+# Fichier d'environnement (à ne pas partager)
+.env
+
+# Fichiers système
+.DS_Store
+# certificat https
+certs/
