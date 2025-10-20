@@ -36,15 +36,22 @@ app = FastAPI(
 #------------------------------------------implementer le rate limiting --------------------
 
 # Initialiser le limiter (basé sur l'IP pour simplicité ; ajustable pour JWT si besoin)
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
-# Attacher le Limiter à l'état de l'application
-app.state.limiter = limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=["20/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
+
 #middleware fourni par SlowAPI sert a vérifier à chaque requête si l’utilisateur (ou IP) a dépassé le quota de requêtes autorisées.
 app.add_middleware(SlowAPIMiddleware)
+# Attacher le Limiter à l'état de l'application
+app.state.limiter = limiter
 # Gestionnaire d'erreur personnalisé (évite l'exposition de détails)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 @app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request, exc):
-    return JSONResponse(status_code=429, content={"detail": "Trop de requêtes. Réessayez plus tard."})
+async def ratelimit_handler(request: Request, exc):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Trop de requêtes. Veuillez réessayer plus tard."}
+    )
+
 
 #----------------------------------------  Connexion à la base de données PostgreSQL  -----------------------------------
 
@@ -62,25 +69,40 @@ def health():
   return {"status": "API prête ! Pool DB connecté."}
 
 #-------------------------------- authentification JWT  -----------------------------------
+ 
 
 @app.post("/auth/login")
 @limiter.limit("5/minute")
-def login(request: LoginRequest = Body(...)):
+
+async def login(request: Request, credentials: LoginRequest = Body(...)):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT password FROM users WHERE username = %s", (request.username,))
+
+        username = credentials.username
+        password = credentials.password
+        logging.debug(f"Connexion à la DB OK. Username recherché : {username}")
+
+        cur.execute("SELECT password FROM users WHERE username = %s", (username,))
         result = cur.fetchone()
+        logging.debug(f"Résultat SQL : {result}")
+
         cur.close()
         conn.close()
 
-        if result and verify_password(request.password, result[0]):
-            token = create_jwt_token(request.username)
+        if result and verify_password(password, result[0]):
+            token = create_jwt_token(username)
+            logging.debug(f"Token créé pour {username}")
             return {"access_token": token, "token_type": "bearer"}
+        
         raise HTTPException(status_code=401, detail="Identifiants invalides")
+    except HTTPException:
+        raise
+
     except Exception as e:
-        logging.error(f"Erreur interne dans /auth/login : {str(e)}") # Journaliser l'erreur complète pour le développeur
-        raise HTTPException(status_code=500, detail="Erreur interne du serveur")  # Retourner un message générique à l'utilisateur
+        logging.exception("Erreur dans /auth/login")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur")
+
 
 #---------------------------- Endpoint : Statut du pool de numéros proxy --------------------------------
 

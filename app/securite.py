@@ -20,7 +20,6 @@ load_dotenv()
 # Classe pour les paramètres de sécurité (ex. : clé JWT)
 class Settings(BaseModel):
     authjwt_secret_key: str = os.getenv("JWT_SECRET")
-
 #fonction de creation de token JWT
 def create_jwt_token(username: str, hours_valid: int = 1) -> str:
          # Récupérer le scope depuis la DB (ajoutez une fonction helper si besoin)
@@ -37,8 +36,7 @@ def create_jwt_token(username: str, hours_valid: int = 1) -> str:
              "exp": datetime.utcnow() + timedelta(hours=hours_valid)
          }
          token = jwt.encode(payload, os.getenv('JWT_SECRET_KEY'), algorithm="HS256")
-         return token
-     
+         return token 
 # fonction Vérifie la validité du JWT envoyé dans l'en-tête Authorization.Si le token est invalide ou absent, lève HTTPException 401
 async def jwt_required(request: Request):
     auth_header = request.headers.get('Authorization')
