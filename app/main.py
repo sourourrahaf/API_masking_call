@@ -36,7 +36,7 @@ app = FastAPI(
 #------------------------------------------implementer le rate limiting --------------------
 
 # Initialiser le limiter (basé sur l'IP pour simplicité ; ajustable pour JWT si besoin)
-limiter = Limiter(key_func=get_remote_address, default_limits=["20/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
 
 #middleware fourni par SlowAPI sert a vérifier à chaque requête si l’utilisateur (ou IP) a dépassé le quota de requêtes autorisées.
 app.add_middleware(SlowAPIMiddleware)
@@ -106,9 +106,9 @@ async def login(request: Request, credentials: LoginRequest = Body(...)):
 
 #---------------------------- Endpoint : Statut du pool de numéros proxy --------------------------------
 
-@app.get("/pool/status", dependencies=[Depends(require_scope("admin"))])
-def pool_status():
-
+@app.get("/pool/status")
+@limiter.limit("2/minute")
+async def pool_status(request: Request, token: dict = Depends(require_scope("admin"))):
     try:
         conn = get_db_connection()
         cur = conn.cursor()

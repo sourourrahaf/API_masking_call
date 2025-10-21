@@ -121,10 +121,24 @@ def decrypt_mapping(encrypted_str: str) -> dict:
 #------------------------------------ controle d'accees -------------------------------
 def require_scope(required_scope: str):
     async def scope_checker(request: Request):
-        await jwt_required(request)  # Vérifie d'abord le token
-        token = request.headers.get('Authorization').split(" ")[1]
-        payload = jwt.decode(token, os.getenv('JWT_SECRET_KEY'), algorithms=["HS256"])
+        # Vérifier la présence du token
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or " " not in auth_header:
+            raise HTTPException(status_code=401, detail="Token manquant ou invalide")
+
+        token_str = auth_header.split(" ")[1]
+
+        try:
+            payload = jwt.decode(token_str, os.getenv("JWT_SECRET_KEY"), algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="Token expiré")
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Token invalide")
+
+        # Vérifier le scope
         if payload.get("scope") != required_scope:
-            raise HTTPException(status_code=403, detail="Scope insuffisant")
+            raise HTTPException(status_code=403, detail="Accès interdit")
+
         return payload
+
     return scope_checker
