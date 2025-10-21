@@ -36,7 +36,7 @@ app = FastAPI(
 #------------------------------------------implementer le rate limiting --------------------
 
 # Initialiser le limiter (basé sur l'IP pour simplicité ; ajustable pour JWT si besoin)
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
+limiter = Limiter(key_func=get_remote_address, default_limits=["10/minute"])  # 100 req/min pendant dev ; ajustez à 10/minute en prod
 
 #middleware fourni par SlowAPI sert a vérifier à chaque requête si l’utilisateur (ou IP) a dépassé le quota de requêtes autorisées.
 app.add_middleware(SlowAPIMiddleware)
@@ -137,7 +137,7 @@ async def pool_status(request: Request, token: dict = Depends(require_scope("adm
 #---------------------------------- Endpoint principal : Masquage d’un appel  -------------------------------------
 
 @app.post("/mask/call")
-@limiter.limit("10/minute")  # Limite stricte pour cet endpoint
+
 async def mask_call(request: Request, body: MaskRequest = Body(...), token: str = Depends(jwt_required)):    
     caller_real = body.caller_real
     callee_real = body.callee_real
@@ -196,7 +196,8 @@ async def mask_call(request: Request, body: MaskRequest = Body(...), token: str 
                 status = "SUCCESS" if random.random() > 0.1 else "FAILED (busy)"
                 print(f"Simulation: {event} - {status}")
 
-        logging.info(f"Appel masqué : call_id={call_id}, proxy={proxy}, utilisateur={token['sub'] if 'sub' in token else 'inconnu'}")  # Log sécurisé pour monitoring        
+        user_sub = token.get('sub') if token else "inconnu"
+        logging.info(f"Appel masqué : call_id={call_id}, proxy={proxy}, utilisateur={user_sub}")
 
         threading.Thread(target=simulate_call, args=(proxy, call_id)).start()
 
