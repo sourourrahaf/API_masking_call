@@ -16,6 +16,9 @@ import psycopg2 #connexion à PostgreSQL
 
 # Charger les variables d'environnement depuis le fichier .env (évite de hardcoder les secrets)
 load_dotenv()
+#connexion avec bd
+def get_db_connection():
+    return psycopg2.connect(os.getenv('DATABASE_URL'))
 #---------------------------------- JWT -------------------------------------
 # Classe pour les paramètres de sécurité (ex. : clé JWT)
 class Settings(BaseModel):
@@ -66,7 +69,7 @@ class MaskRequest(BaseModel):
     # Validation stricte du format tunisien pour prévenir les injections et les données malformées (OWASP : Injection)
     def validate_phone(cls, v):
         if not re.match(r'^\+216\d{8}$', v):  # Format exact : +216 suivi de 8 chiffres
-            raise ValueError('Numéro invalide : doit être au format +216XXXXXXXX')
+            raise ValueError('Format du numéro non reconnu')
         return v
     # Validation pour éviter les numéros identiques
   # Nouveau validator pour éviter les numéros identiques
@@ -75,6 +78,23 @@ class MaskRequest(BaseModel):
       if 'caller_real' in info.data and v == info.data['caller_real']:
           raise ValueError('Numéros identiques interdits')
       return v
+#------------------ verification des numeros dans la bd 
+def verify_user_exists(real_number: str):
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM users WHERE real_number = %s;", (real_number,))
+    exists = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not exists:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Le numéro demandé n’est pas enregistré sur le réseau"
+        )    
 # ----------Classe pour définir le format du body d'authentification (avec validation pour renforcer la sécurité)
 class LoginRequest(BaseModel):  
     username: str
@@ -85,19 +105,19 @@ class LoginRequest(BaseModel):
     # Validation pour éviter les usernames dangereux (OWASP : Injection, prévention des caractères spéciaux)
     def validate_username(cls, v):  
         if len(v) < 3 or len(v) > 50 or not re.match(r'^[a-zA-Z0-9_]+$', v):
-            raise ValueError('Username invalide : 3-50 caractères alphanumériques')
+            raise ValueError('Saisie trop courte — 3 caractères requis au minimum')
         return v
     
     # Validation de longueur minimale pour renforcer l'authentification (OWASP : Authentification brisée)
     @field_validator('password')
     def validate_password(cls, v):
-        if len(v) < 8:
-            raise ValueError('Mot de passe trop court : minimum 8 caractères')
+        if len(v) < 8 or not re.search(r'\d', v):
+            raise ValueError('Mot de passe invalide : minimum 8 caractères avec des chiffres')
         return v
 #---------------------- hashage de mot de passe des users -------------------
 #fonction de hasher les mdp
 def hash_password(password: str) -> str:
-    """Hash un mot de passe avec bcrypt"""
+
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 # fonction de Vérifie un mot de passe avec le hash stocké
 def verify_password(password: str, hashed: str) -> bool:
@@ -137,7 +157,7 @@ def require_scope(required_scope: str):
 
         # Vérifier le scope
         if payload.get("scope") != required_scope:
-            raise HTTPException(status_code=403, detail="Accès interdit")
+            raise HTTPException(status_code=403, detail="Accès interdit!!!")
 
         return payload
 

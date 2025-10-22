@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 #----------------------------------------------- Importer toutes les fonctions de securite.py ----------------------------------------------------------------------------------
 
 from securite import (
-    create_jwt_token,jwt_required,verify_password,encrypt_mapping,LoginRequest,MaskRequest,require_scope
+    create_jwt_token,jwt_required,verify_password,encrypt_mapping,LoginRequest,MaskRequest,require_scope, verify_user_exists
 )
 #----------------------- Charger les variables d'environnement depuis le fichier .env ------------------------------------------
 load_dotenv()
@@ -49,7 +49,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 async def ratelimit_handler(request: Request, exc):
     return JSONResponse(
         status_code=429,
-        content={"detail": "Trop de requêtes. Veuillez réessayer plus tard."}
+        content={"detail": "Limite de requêtes atteinte. Veuillez réessayer plus tard"}
     )
 
 
@@ -143,7 +143,8 @@ async def mask_call(request: Request, body: MaskRequest = Body(...), token: str 
     callee_real = body.callee_real
 
     try:
-        # Connexion à la base
+        verify_user_exists(caller_real)
+        verify_user_exists(callee_real)
         conn = get_db_connection()
         cur = conn.cursor()
 
@@ -209,7 +210,8 @@ async def mask_call(request: Request, body: MaskRequest = Body(...), token: str 
             "expires_at": expires_at.isoformat(),
             "message": "Numéro réel masqué par proxy (simulation)"
         }
-
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logging.error(f"Erreur interne dans /mask/call : {str(e)}")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur")
